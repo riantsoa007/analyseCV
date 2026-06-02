@@ -1,32 +1,7 @@
-# ANALYSE CV - MVC + SQLAlchemy (style Laravel)
+# ANALYSE CV - MVC + SQLAlchemy 
 
 Application Flask avec Jinja2, structure MVC et ORM SQLAlchemy.
 
-## Structure du projet
-
-```
-CRUD Flask/
-├── app.py                      # Point d'entree
-├── config.py                   # Configuration (URI SQLAlchemy)
-├── extensions.py               # Instance db (SQLAlchemy)
-├── database.py                 # Creation BDD + tables
-├── controllers/                # Toute la logique CRUD (requetes ORM)
-│   └── produit_controller.py
-├── models/                     
-│   └── produit.py
-├── routes/                     # URLs (Blueprint)
-│   └── produit_routes.py
-└── templates/                  # Vues Jinja2
-```
-
-## Modele vs Controller (style Laravel)
-
-| Laravel | Ce projet |
-|---------|-----------|
-| `Produit.php` — `$fillable`, relations | `models/produit.py` — colonnes SQLAlchemy |
-| `ProduitController.php` — logique | `controllers/produit_controller.py` — `Produit.query`, `db.session` |
-
-Le modele ne contient **aucune methode metier** ; le controller execute les requetes ORM.
 
 ## Installation
 
