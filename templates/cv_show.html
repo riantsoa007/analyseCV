@@ -12,6 +12,8 @@
 </div>
 
 {% set data = cv.extracted_text or {} %}
+{% set analysis = cv.analysis %}
+{% set match_result = job_match_result %}
 
 <div class="row g-4">
     <div class="col-lg-5">
@@ -50,9 +52,108 @@
                 {% endif %}
             </div>
         </div>
+
+        <div class="card shadow-sm mt-4">
+            <div class="card-header">
+                <h2 class="h5 mb-0">Evaluation</h2>
+            </div>
+            <div class="card-body">
+                <p class="mb-2">
+                    <strong>Note :</strong>
+                    {% if analysis and analysis.score is not none %}
+                    {{ "%.1f"|format(analysis.score) }}/100
+                    {% else %}
+                    -
+                    {% endif %}
+                </p>
+
+                <p class="mb-2"><strong>Analyse :</strong></p>
+                <p class="text-muted mb-3">
+                    {{ analysis.analysis_text if analysis and analysis.analysis_text else "Aucune analyse disponible." }}
+                </p>
+
+                <p class="mb-2"><strong>Suggestions :</strong></p>
+                {% if suggestions %}
+                <ul class="mb-0">
+                    {% for suggestion in suggestions %}
+                    <li>{{ suggestion }}</li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="text-muted mb-0">Aucune suggestion disponible.</p>
+                {% endif %}
+            </div>
+        </div>
     </div>
 
     <div class="col-lg-7">
+        <div class="card shadow-sm mb-4">
+            <div class="card-header">
+                <h2 class="h5 mb-0">Correspondance avec une offre</h2>
+            </div>
+            <div class="card-body">
+                <form action="{{ url_for('cv.match_job', cv_id=cv.id) }}" method="POST">
+                    <div class="mb-3">
+                        <label for="job_offer" class="form-label">Texte de l'offre de job</label>
+                        <textarea
+                            class="form-control"
+                            id="job_offer"
+                            name="job_offer"
+                            rows="8"
+                            placeholder="Collez ici le texte de l'offre de job..."
+                            required
+                        >{{ job_offer_text or '' }}</textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Analyser la correspondance</button>
+                </form>
+
+                {% if match_result %}
+                <hr>
+                <div class="mb-3">
+                    <span class="badge {% if match_result.match %}text-bg-success{% else %}text-bg-danger{% endif %}">
+                        {% if match_result.match %}Correspond{% else %}Ne correspond pas{% endif %}
+                    </span>
+                    <span class="ms-2">
+                        <strong>Score :</strong>
+                        {% if match_result.score is not none %}
+                        {{ "%.1f"|format(match_result.score) }}/100
+                        {% else %}
+                        -
+                        {% endif %}
+                    </span>
+                </div>
+
+                <p class="mb-2"><strong>Resume :</strong></p>
+                <p class="text-muted">{{ match_result.summary or "-" }}</p>
+
+                <p class="mb-2"><strong>Points forts :</strong></p>
+                {% if match_result.strengths %}
+                <ul>
+                    {% for item in match_result.strengths %}
+                    <li>{{ item }}</li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="text-muted">Aucun point fort specifie.</p>
+                {% endif %}
+
+                <p class="mb-2"><strong>Competences manquantes :</strong></p>
+                {% if match_result.missing_skills %}
+                <ul>
+                    {% for item in match_result.missing_skills %}
+                    <li>{{ item }}</li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="text-muted">Aucune competence manquante specifiee.</p>
+                {% endif %}
+
+                <p class="mb-2"><strong>Conclusion :</strong></p>
+                <p class="text-muted mb-0">{{ match_result.recommendation or "-" }}</p>
+                {% endif %}
+            </div>
+        </div>
+
         <div class="card shadow-sm">
             <div class="card-header">
                 <h2 class="h5 mb-0">Donnees extraites</h2>

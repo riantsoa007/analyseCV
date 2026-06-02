@@ -6,7 +6,7 @@ from flask import current_app, flash, jsonify, redirect, render_template, reques
 from werkzeug.utils import secure_filename
 
 from extensions import db
-from models import CV
+from models import Analysis, CV
 from services.pdf_parser import PDFParser
 
 
@@ -28,6 +28,41 @@ def _extract_json_payload(raw_text):
     return json.loads(cleaned_text)
 
 
+def _normalize_suggestions(value):
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, str) and value.strip():
+        return [value.strip()]
+    return []
+
+
+def _normalize_score(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _decode_suggestions(value):
+    if not value:
+        return []
+
+    try:
+        parsed = json.loads(value)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return [str(value)]
+
+    return _normalize_suggestions(parsed)
+
+
+def _normalize_list(value):
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, str) and value.strip():
+        return [value.strip()]
+    return []
+
+
 def _get_gemini_model():
     try:
         from google import genai
@@ -41,6 +76,87 @@ def _get_gemini_model():
     return genai.Client(api_key=api_key)
 
 
+def _build_show_context(cv, job_offer_text="", job_match_result=None):
+    suggestions = _decode_suggestions(cv.analysis.suggestions) if cv.analysis else []
+    return {
+        "cv": cv,
+        "suggestions": suggestions,
+        "job_offer_text": job_offer_text,
+        "job_match_result": job_match_result,
+    }
+
+
+def _analyze_job_offer(cv, job_offer_text):
+    client = _get_gemini_model()
+
+    cv_payload = {
+        "cv_id": cv.id,
+        "file_name": cv.file_name,
+        "extracted_text": cv.extracted_text or {},
+        "analysis": {
+            "analysis_text": cv.analysis.analysis_text if cv.analysis else None,
+            "suggestions": _decode_suggestions(cv.analysis.suggestions) if cv.analysis else [],
+            "score": cv.analysis.score if cv.analysis else None,
+        },
+    }
+
+    prompt = f"""
+    Analyse en francais la compatibilite entre cette offre de job et ce CV.
+    Retourne UNIQUEMENT un JSON valide.
+
+    Offre de job:
+    {job_offer_text}
+
+    Donnees du CV:
+    {json.dumps(cv_payload, ensure_ascii=True, indent=2)}
+
+    Format attendu:
+    {{
+        "match": true,
+        "score": 0,
+        "summary": "",
+        "strengths": [],
+        "missing_skills": [],
+        "recommendation": ""
+    }}
+
+    Regles:
+    - "match" doit etre true si le CV correspond globalement a l'offre, sinon false.
+    - "score" doit etre un nombre entre 0 et 100.
+    - "summary" doit etre un court resume en francais.
+    - "strengths" doit lister les points forts du candidat par rapport a l'offre.
+    - "missing_skills" doit lister les competences ou experiences manquantes.
+    - "recommendation" doit donner une conclusion breve en francais.
+    """
+
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=prompt,
+    )
+
+    try:
+        result = _extract_json_payload(response.text)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return {
+            "raw": response.text,
+            "match": False,
+            "score": None,
+            "summary": "Le resultat n'a pas pu etre converti en JSON.",
+            "strengths": [],
+            "missing_skills": [],
+            "recommendation": "",
+        }
+
+    return {
+        "match": bool(result.get("match")),
+        "score": _normalize_score(result.get("score")),
+        "summary": str(result.get("summary", "")).strip(),
+        "strengths": _normalize_list(result.get("strengths")),
+        "missing_skills": _normalize_list(result.get("missing_skills")),
+        "recommendation": str(result.get("recommendation", "")).strip(),
+    }
+
+
 class CVController:
     @staticmethod
     def index():
@@ -50,7 +166,53 @@ class CVController:
     @staticmethod
     def show(cv_id):
         cv = CV.query.get_or_404(cv_id)
-        return render_template("cv_show.html", cv=cv)
+        return render_template("cv_show.html", **_build_show_context(cv))
+
+    @staticmethod
+    def match_job(cv_id):
+        cv = CV.query.get_or_404(cv_id)
+        job_offer_text = (request.form.get("job_offer") or "").strip()
+
+        if not job_offer_text:
+            message = "Veuillez saisir une offre de job."
+            if _wants_json_response():
+                return jsonify({"error": message}), 400
+            flash(message, "danger")
+            return render_template(
+                "cv_show.html",
+                **_build_show_context(cv, job_offer_text=job_offer_text),
+            )
+
+        try:
+            job_match_result = _analyze_job_offer(cv, job_offer_text)
+        except Exception as exc:
+            message = f"Erreur pendant l'analyse de l'offre : {exc}"
+            if _wants_json_response():
+                return jsonify({"error": message}), 500
+            flash(message, "danger")
+            return render_template(
+                "cv_show.html",
+                **_build_show_context(cv, job_offer_text=job_offer_text),
+            )
+
+        if _wants_json_response():
+            return jsonify(
+                {
+                    "message": "Analyse de correspondance terminee.",
+                    "cv_id": cv.id,
+                    "job_offer": job_offer_text,
+                    "result": job_match_result,
+                }
+            )
+
+        return render_template(
+            "cv_show.html",
+            **_build_show_context(
+                cv,
+                job_offer_text=job_offer_text,
+                job_match_result=job_match_result,
+            ),
+        )
 
     @staticmethod
     def upload():
@@ -87,8 +249,16 @@ class CVController:
                 "email": "",
                 "skills": [],
                 "experience": [],
-                "education": []
+                "education": [],
+                "analysis": "",
+                "suggestions": [],
+                "score": 0
             }}
+
+            Rules:
+            - "analysis" must be a short professional summary of the profile et en francais.
+            - "suggestions" must contain concrete recommendations to improve the CV or profile et en francais.
+            - "score" must be a numeric score between 0 and 100 et en francais.
             """
 
             response = client.models.generate_content(
@@ -108,6 +278,19 @@ class CVController:
             )
 
             db.session.add(cv)
+            db.session.flush()
+
+            analysis = Analysis(
+                analysis_text=str(extracted_json.get("analysis", "")).strip() or None,
+                suggestions=json.dumps(
+                    _normalize_suggestions(extracted_json.get("suggestions")),
+                    ensure_ascii=True,
+                ),
+                score=_normalize_score(extracted_json.get("score")),
+                cv_id=cv.id,
+            )
+
+            db.session.add(analysis)
             db.session.commit()
 
             if _wants_json_response():
