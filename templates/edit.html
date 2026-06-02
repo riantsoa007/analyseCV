@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}Modifier produit{% endblock %}
+
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header">
+        <h1 class="h4 mb-0">Modifier le produit #{{ produit.id }}</h1>
+    </div>
+    <div class="card-body">
+        <form action="{{ url_for('produit.update', produit_id=produit.id) }}" method="POST">
+            <div class="mb-3">
+                <label for="nom" class="form-label">Nom *</label>
+                <input type="text" class="form-control" id="nom" name="nom"
+                       value="{{ produit.nom }}" required>
+            </div>
+            <div class="mb-3">
+                <label for="description" class="form-label">Description</label>
+                <textarea class="form-control" id="description" name="description" rows="3">{{ produit.description or '' }}</textarea>
+            </div>
+            <div class="mb-3">
+                <label for="prix" class="form-label">Prix *</label>
+                <input type="number" class="form-control" id="prix" name="prix"
+                       step="0.01" min="0" value="{{ produit.prix }}" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Mettre a jour</button>
+            <a href="{{ url_for('produit.index') }}" class="btn btn-secondary">Annuler</a>
+        </form>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block title %}Detail CV{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h1 class="h3 mb-1">CV #{{ cv.id }}</h1>
+        <p class="text-muted mb-0">{{ cv.file_name }}</p>
+    </div>
+    <a href="{{ url_for('cv.index') }}" class="btn btn-secondary">Retour a la liste</a>
+</div>
+
+{% set data = cv.extracted_text or {} %}
+
+<div class="row g-4">
+    <div class="col-lg-5">
+        <div class="card shadow-sm">
+            <div class="card-header">
+                <h2 class="h5 mb-0">Resume</h2>
+            </div>
+            <div class="card-body">
+                <dl class="row mb-0">
+                    <dt class="col-sm-4">Nom</dt>
+                    <dd class="col-sm-8">{{ data.get("name", "-") }}</dd>
+
+                    <dt class="col-sm-4">Email</dt>
+                    <dd class="col-sm-8">{{ data.get("email", "-") }}</dd>
+
+                    <dt class="col-sm-4">Fichier</dt>
+                    <dd class="col-sm-8">{{ cv.file_name }}</dd>
+
+                    <dt class="col-sm-4">Date</dt>
+                    <dd class="col-sm-8">{{ cv.uploaded_at.strftime("%d/%m/%Y %H:%M") if cv.uploaded_at else "-" }}</dd>
+                </dl>
+            </div>
+        </div>
+
+        <div class="card shadow-sm mt-4">
+            <div class="card-header">
+                <h2 class="h5 mb-0">Competences</h2>
+            </div>
+            <div class="card-body">
+                {% if data.get("skills") %}
+                {% for skill in data.get("skills", []) %}
+                <span class="badge text-bg-primary me-1 mb-1">{{ skill }}</span>
+                {% endfor %}
+                {% else %}
+                <p class="text-muted mb-0">Aucune competence extraite.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-7">
+        <div class="card shadow-sm">
+            <div class="card-header">
+                <h2 class="h5 mb-0">Donnees extraites</h2>
+            </div>
+            <div class="card-body">
+                <pre class="bg-dark text-light p-3 rounded mb-0"><code>{{ data | tojson(indent=2) }}</code></pre>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
