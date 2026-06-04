@@ -10,7 +10,10 @@
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary mb-4">
         <div class="container">
             <a class="navbar-brand" href="{{ url_for('cv.index') }}">Analyse CV</a>
-            <a class="btn btn-light btn-sm" href="{{ url_for('cv.index') }}">Uploader un CV</a>
+            <div class="d-flex gap-2">
+                <a class="btn btn-light btn-sm" href="{{ url_for('cv.index') }}">CV</a>
+                <a class="btn btn-outline-light btn-sm" href="{{ url_for('cv.chatbot') }}">Chatbot CV</a>
+            </div>
         </div>
     </nav>
 

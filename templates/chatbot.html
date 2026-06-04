@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block title %}Chatbot CV{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+    <div class="col-lg-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-header">
+                <h1 class="h4 mb-0">Chatbot CV</h1>
+            </div>
+            <div class="card-body">
+                <p class="text-muted">
+                    Posez des questions sur les CV deja presents dans la base.
+                </p>
+                <div class="alert alert-info mb-3">
+                    <strong>{{ cv_count }}</strong> CV disponibles dans la base.
+                </div>
+                <p class="mb-2"><strong>Exemples :</strong></p>
+                <ul class="small text-muted">
+                    <li>Quels sont les CV qui sont developpeur ?</li>
+                    <li>Quel candidat semble le plus fort en Python ?</li>
+                    <li>Quels CV ont des competences Flask ou Django ?</li>
+                </ul>
+                <hr>
+                <p class="mb-2"><strong>CV recents :</strong></p>
+                {% if recent_cvs %}
+                <ul class="list-group list-group-flush">
+                    {% for cv in recent_cvs %}
+                    {% set data = cv.extracted_text or {} %}
+                    <li class="list-group-item px-0">
+                        <div class="fw-semibold">{{ data.get("name", cv.file_name) }}</div>
+                        <div class="small text-muted">CV #{{ cv.id }} - {{ cv.file_name }}</div>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="text-muted mb-0">Aucun CV disponible.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-8">
+        <div class="card shadow-sm">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h2 class="h5 mb-0">Conversation</h2>
+                <form action="{{ url_for('cv.chatbot_clear') }}" method="POST">
+                    <button type="submit" class="btn btn-outline-secondary btn-sm">Effacer</button>
+                </form>
+            </div>
+            <div class="card-body">
+                <div class="border rounded p-3 bg-body-tertiary mb-3" style="min-height: 360px;">
+                    {% if chat_history %}
+                    {% for message in chat_history %}
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-{{ 'end' if message.role == 'user' else 'start' }}">
+                            <div class="p-3 rounded-3 {% if message.role == 'user' %}bg-primary text-white{% else %}bg-white border{% endif %}" style="max-width: 85%;">
+                                <div class="small fw-semibold mb-1">
+                                    {% if message.role == 'user' %}Vous{% else %}Assistant CV{% endif %}
+                                </div>
+                                <div style="white-space: pre-wrap;">{{ message.content }}</div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                    {% else %}
+                    <div class="h-100 d-flex align-items-center justify-content-center text-center text-muted">
+                        <div>
+                            <p class="mb-1">Aucune question pour le moment.</p>
+                            <p class="mb-0 small">Commencez une conversation sur les CV de votre base.</p>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <form action="{{ url_for('cv.chatbot_ask') }}" method="POST">
+                    <div class="mb-3">
+                        <label for="question" class="form-label">Votre question</label>
+                        <textarea
+                            class="form-control"
+                            id="question"
+                            name="question"
+                            rows="4"
+                            placeholder="Ex: Quelles sont les CV qui sont developpeur backend ?"
+                            required
+                        >{{ question_text or '' }}</textarea>
+                    </div>
+                    <div class="d-flex justify-content-end">
+                        <button type="submit" class="btn btn-primary">Envoyer</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

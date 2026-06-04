@@ -2,11 +2,13 @@ import json
 import os
 from datetime import datetime
 
-from flask import current_app, flash, jsonify, redirect, render_template, request, url_for
+from flask import current_app, flash, jsonify, redirect, render_template, request, session, url_for
 from werkzeug.utils import secure_filename
 
 from extensions import db
 from models import Analysis, CV
+from services.chroma_cv_store import ChromaCVStore
+from services.cv_chatbot_service import CVChatbotService
 from services.pdf_parser import PDFParser
 
 
@@ -83,6 +85,26 @@ def _build_show_context(cv, job_offer_text="", job_match_result=None):
         "suggestions": suggestions,
         "job_offer_text": job_offer_text,
         "job_match_result": job_match_result,
+    }
+
+
+def _get_chat_history():
+    return session.get("cv_chat_history", [])
+
+
+def _save_chat_history(history):
+    session["cv_chat_history"] = history[-10:]
+
+
+def _build_chatbot_context(question_text=""):
+    history = _get_chat_history()
+    cvs = CV.query.order_by(CV.uploaded_at.desc()).all()
+
+    return {
+        "chat_history": history,
+        "question_text": question_text,
+        "cv_count": len(cvs),
+        "recent_cvs": cvs[:5],
     }
 
 
@@ -164,6 +186,68 @@ class CVController:
         return render_template("index.html", cvs=cvs)
 
     @staticmethod
+    def chatbot():
+        return render_template("chatbot.html", **_build_chatbot_context())
+
+    @staticmethod
+    def chatbot_ask():
+        question = (request.form.get("question") or "").strip()
+
+        if not question:
+            message = "Veuillez saisir une question."
+            if _wants_json_response():
+                return jsonify({"error": message}), 400
+            flash(message, "danger")
+            return render_template("chatbot.html", **_build_chatbot_context(question_text=question))
+
+        history = _get_chat_history()
+
+        try:
+            result = CVChatbotService.answer(
+                question=question,
+                history=history,
+                ollama_model=current_app.config["OLLAMA_MODEL"],
+                chroma_path=current_app.config["CHROMA_CV_PATH"],
+                chroma_collection=current_app.config["CHROMA_CV_COLLECTION"],
+                ollama_host=current_app.config["OLLAMA_HOST"],
+            )
+        except Exception as exc:
+            message = f"Erreur pendant la reponse du chatbot : {exc}"
+            if _wants_json_response():
+                return jsonify({"error": message}), 500
+            flash(message, "danger")
+            return render_template("chatbot.html", **_build_chatbot_context(question_text=question))
+
+        history.extend(
+            [
+                {"role": "user", "content": question},
+                {"role": "assistant", "content": result["answer"]},
+            ]
+        )
+        _save_chat_history(history)
+
+        if _wants_json_response():
+            return jsonify(
+                {
+                    "question": question,
+                    "answer": result["answer"],
+                    "candidate_cv_ids": [cv.id for cv in result["candidate_cvs"]],
+                }
+            )
+
+        return render_template("chatbot.html", **_build_chatbot_context())
+
+    @staticmethod
+    def chatbot_clear():
+        session.pop("cv_chat_history", None)
+
+        if _wants_json_response():
+            return jsonify({"message": "Historique efface."})
+
+        flash("Historique du chatbot efface.", "success")
+        return redirect(url_for("cv.chatbot"))
+
+    @staticmethod
     def show(cv_id):
         cv = CV.query.get_or_404(cv_id)
         return render_template("cv_show.html", **_build_show_context(cv))
@@ -226,7 +310,7 @@ class CVController:
                 flash(message, "danger")
                 return redirect(url_for("cv.index"))
 
-            upload_dir = os.path.join(current_app.root_path, "uploads")
+            upload_dir = current_app.config["UPLOAD_FOLDER"]
             os.makedirs(upload_dir, exist_ok=True)
 
             safe_name = secure_filename(file.filename)
@@ -291,6 +375,12 @@ class CVController:
             )
 
             db.session.add(analysis)
+            ChromaCVStore.upsert_cv(
+                current_app.config["CHROMA_CV_PATH"],
+                cv,
+                text,
+                current_app.config["CHROMA_CV_COLLECTION"],
+            )
             db.session.commit()
 
             if _wants_json_response():
@@ -321,6 +411,15 @@ class CVController:
 
         if os.path.exists(absolute_file_path):
             os.remove(absolute_file_path)
+
+        try:
+            ChromaCVStore.delete_cv(
+                current_app.config["CHROMA_CV_PATH"],
+                cv.id,
+                current_app.config["CHROMA_CV_COLLECTION"],
+            )
+        except RuntimeError:
+            pass
 
         db.session.delete(cv)
         db.session.commit()
